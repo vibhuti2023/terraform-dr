@@ -11,9 +11,9 @@ resource "aws_instance" "web" {
   }
 }
 
-resource "aws_s3_bucket_acl" "dr_bucket_acl" {
-  bucket = aws_s3_bucket.dr_bucket.id
-  acl    = "private"
+resource "aws_s3_bucket" "dr_bucket" {
+  bucket = "boobooboo"
+  acl    = "private"  # or public-read, public-read-write, etc.
 }
 
 resource "aws_sns_topic" "alert_topic" {
