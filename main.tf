@@ -3,8 +3,12 @@ provider "aws" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-0062355a529d6089c" # Update with latest Amazon Linux AMI
+  ami           = "ami-010eee99dee796fc0" # Use latest Amazon Linux AMI
   instance_type = "t2.micro"
+
+  instance_market_options {
+    market_type = "spot"
+  }
 
   tags = {
     Name = "DR-Web-Instance"
@@ -47,5 +51,60 @@ resource "aws_iam_role" "lambda_exec" {
     ]
   }
   EOF
+}
+resource "aws_iam_role" "lambda_ec2_control" {
+  name = "lambda_ec2_control"
+  assume_role_policy = <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Action": "sts:AssumeRole",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "lambda.amazonaws.com"
+        }
+      }
+    ]
+  }
+  EOF
+}
+
+resource "aws_iam_policy" "lambda_ec2_policy" {
+  name        = "lambda_ec2_policy"
+  description = "Policy to start and stop EC2 instances"
+  policy      = <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:DescribeInstances"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }
+  EOF
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_ec2_attach" {
+  role       = aws_iam_role.lambda_ec2_control.name
+  policy_arn = aws_iam_policy.lambda_ec2_policy.arn
+}
+resource "aws_s3_bucket_lifecycle_configuration" "dr_backup_lifecycle" {
+  bucket = aws_s3_bucket.dr_bucket.id
+
+  rule {
+    id = "delete-old-backups"
+    status = "Enabled"
+
+    expiration {
+      days = 30  # Automatically delete backups older than 30 days
+    }
+  }
 }
 
