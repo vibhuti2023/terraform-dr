@@ -12,7 +12,7 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_s3_bucket" "dr_bucket" {
-  bucket = "boobooboo"
+  bucket = "terraform-dr-backup-bucket-123"
   acl    = "private"  # or public-read, public-read-write, etc.
 }
 
