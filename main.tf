@@ -1,110 +1,125 @@
+# Terraform configuration for Complete Disaster Recovery (DR) Setup on AWS
+
 provider "aws" {
-  region = "us-east-1"
+  region = var.region
 }
 
-resource "aws_instance" "web" {
-  ami           = "ami-01184db239e4c756c" # Use latest Amazon Linux AMI
-  instance_type = "t2.micro"
-
-  instance_market_options {
-    market_type = "spot"
-  }
-
-  tags = {
-    Name = "DR-Web-Instance"
-  }
+# S3 Bucket for Backups with Lifecycle Policy
+resource "aws_s3_bucket" "dr_backup" {
+  bucket = var.s3_bucket_name
 }
 
-resource "aws_s3_bucket" "dr_bucket" {
-  bucket = "terraform-dr-backup-bucket-123"
-  acl    = "private"  # or public-read, public-read-write, etc.
-}
-
-resource "aws_sns_topic" "alert_topic" {
-  name = "dr-alerts"
-}
-
-resource "aws_lambda_function" "dr_lambda" {
-  filename      = "lambda_function.zip"
-  function_name = "drLambdaFunction"
-  role          = aws_iam_role.lambda_exec.arn
-  handler       = "index.handler"
-  runtime       = "python3.8"
-}
-
-output "instance_public_ip" {
-  value = aws_instance.web.public_ip
-}
-resource "aws_iam_role" "lambda_exec" {
-  name = "lambda_exec"
-  assume_role_policy = <<EOF
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Action": "sts:AssumeRole",
-        "Effect": "Allow",
-        "Principal": {
-          "Service": "lambda.amazonaws.com"
-        }
-      }
-    ]
-  }
-  EOF
-}
-resource "aws_iam_role" "lambda_ec2_control" {
-  name = "lambda_ec2_control"
-  assume_role_policy = <<EOF
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Action": "sts:AssumeRole",
-        "Effect": "Allow",
-        "Principal": {
-          "Service": "lambda.amazonaws.com"
-        }
-      }
-    ]
-  }
-  EOF
-}
-
-resource "aws_iam_policy" "lambda_ec2_policy" {
-  name        = "lambda_ec2_policy"
-  description = "Policy to start and stop EC2 instances"
-  policy      = <<EOF
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": [
-          "ec2:StartInstances",
-          "ec2:StopInstances",
-          "ec2:DescribeInstances"
-        ],
-        "Resource": "*"
-      }
-    ]
-  }
-  EOF
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_ec2_attach" {
-  role       = aws_iam_role.lambda_ec2_control.name
-  policy_arn = aws_iam_policy.lambda_ec2_policy.arn
-}
 resource "aws_s3_bucket_lifecycle_configuration" "dr_backup_lifecycle" {
-  bucket = aws_s3_bucket.dr_bucket.id
+  bucket = aws_s3_bucket.dr_backup.id
 
   rule {
-    id = "delete-old-backups"
+    id     = "delete-old-backups"
     status = "Enabled"
 
     expiration {
-      days = 30  # Automatically delete backups older than 30 days
+      days = var.s3_retention_days
     }
   }
 }
 
+# IAM Role for Lambda to Start/Stop DR EC2 Instances
+resource "aws_iam_role" "lambda_exec" {
+  name = "lambda-dr-role"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "lambda.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": ""
+    }
+  ]
+}
+EOF
+}
+
+# Lambda Function to Start/Stop DR EC2 Instances
+resource "aws_lambda_function" "start_stop_dr" {
+  filename         = "lambda.zip"
+  function_name    = "startStopDRInstances"
+  role             = aws_iam_role.lambda_exec.arn
+  handler          = "lambda_function.lambda_handler"
+  runtime         = "python3.9"
+  timeout          = 60
+}
+
+# Spot Instance for DR EC2
+resource "aws_instance" "dr_instance" {
+  ami           = var.ami_id
+  instance_type = var.instance_type
+  key_name      = var.key_name
+  spot_price    = "0.05"
+
+  tags = {
+    Name = "DR-Instance"
+  }
+}
+
+# RDS Snapshot Replication
+resource "aws_db_snapshot" "rds_snapshot" {
+  db_instance_identifier = var.rds_instance_id
+  db_snapshot_identifier = "${var.rds_instance_id}-snapshot"
+}
+
+# Route 53 Failover Setup
+resource "aws_route53_record" "failover_primary" {
+  zone_id = var.route53_zone_id
+  name    = "primary.example.com"
+  type    = "A"
+  set_identifier = "primary"
+  failover_routing_policy {
+    type = "PRIMARY"
+  }
+  records = [var.primary_ip]
+  ttl     = 60
+}
+
+resource "aws_route53_record" "failover_secondary" {
+  zone_id = var.route53_zone_id
+  name    = "secondary.example.com"
+  type    = "A"
+  set_identifier = "secondary"
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+  records = [var.secondary_ip]
+  ttl     = 60
+}
+
+# CloudWatch Alarms & SNS Notifications
+resource "aws_sns_topic" "dr_alerts" {
+  name = "dr-alerts"
+}
+
+resource "aws_cloudwatch_metric_alarm" "ec2_down_alarm" {
+  alarm_name          = "EC2-Down-Alarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "StatusCheckFailed"
+  namespace          = "AWS/EC2"
+  period             = 60
+  statistic          = "Average"
+  threshold         = 1
+  alarm_actions      = [aws_sns_topic.dr_alerts.arn]
+}
+
+variable "region" {}
+variable "s3_bucket_name" {}
+variable "s3_retention_days" {}
+variable "ami_id" {}
+variable "instance_type" {}
+variable "key_name" {}
+variable "rds_instance_id" {}
+variable "route53_zone_id" {}
+variable "primary_ip" {}
+variable "secondary_ip" {}
