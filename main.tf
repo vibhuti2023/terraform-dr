@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-010eee99dee796fc0" # Use latest Amazon Linux AMI
+  ami           = "ami-01184db239e4c756c" # Use latest Amazon Linux AMI
   instance_type = "t2.micro"
 
   instance_market_options {
