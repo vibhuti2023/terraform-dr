@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0" # Update with latest Amazon Linux AMI
+  ami           = "ami-010eee99dee796fc0" # Update with latest Amazon Linux AMI
   instance_type = "t2.micro"
 
   tags = {
@@ -11,8 +11,8 @@ resource "aws_instance" "web" {
   }
 }
 
-resource "aws_s3_bucket" "dr_bucket" {
-  bucket = "terraform-dr-backup-bucket-123"  # Change to a unique bucket name
+resource "aws_s3_bucket_acl" "dr_bucket_acl" {
+  bucket = aws_s3_bucket.dr_bucket.id
   acl    = "private"
 }
 
