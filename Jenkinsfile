@@ -15,17 +15,24 @@ pipeline {
         }
 
         stage('Setup S3 Backup Management') {
-            steps {
-                script {
-                    echo 'Applying S3 Lifecycle Policies to auto-delete old backups...'
-                    sh '''
-                    aws s3api put-bucket-lifecycle-configuration \
-                        --bucket my-dr-backups \
-                        --lifecycle-configuration file://s3-lifecycle-policy.json
-                    '''
-                }
-            }
+    steps {
+        script {
+            echo "Applying S3 Lifecycle Policies to auto-delete old backups..."
+            writeFile file: 's3-lifecycle-policy.json', text: '''{
+                "Rules": [
+                  {
+                    "ID": "DeleteOldBackups",
+                    "Prefix": "",
+                    "Status": "Enabled",
+                    "Expiration": { "Days": 30 }
+                  }
+                ]
+              }'''
+            sh 'aws s3api put-bucket-lifecycle-configuration --bucket my-dr-backups --lifecycle-configuration file://s3-lifecycle-policy.json'
         }
+    }
+}
+
 
         stage('Manage EC2 Instances') {
             steps {
