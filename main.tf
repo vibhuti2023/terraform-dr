@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-010eee99dee796fc0" # Update with latest Amazon Linux AMI
+  ami           = "ami-0062355a529d6089c" # Update with latest Amazon Linux AMI
   instance_type = "t2.micro"
 
   tags = {
