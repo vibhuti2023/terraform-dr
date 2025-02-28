@@ -42,6 +42,32 @@ resource "aws_iam_role" "lambda_exec" {
 }
 EOF
 }
+resource "aws_iam_policy" "lambda_ec2_permissions" {
+  name        = "LambdaEC2Permissions"
+  description = "Allows Lambda to manage EC2 instances"
+  
+  policy = <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:DescribeInstances"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }
+  EOF
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_attach_policy" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = aws_iam_policy.lambda_ec2_permissions.arn
+}
 
 # Lambda Function to Start/Stop DR EC2 Instances
 resource "aws_lambda_function" "start_stop_dr" {
