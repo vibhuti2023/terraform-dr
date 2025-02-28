@@ -1,87 +1,72 @@
-// Jenkins Pipeline for Automated Disaster Recovery (DR) on AWS
-
 pipeline {
     agent any
+
     environment {
-        AWS_REGION = 'us-east-1' // Set AWS region
+        AWS_REGION = "us-east-1"
+        S3_BUCKET = "dr-snapshots-bucket"
+        INSTANCE_ID = ""  // This will be set dynamically
     }
+
     stages {
-        stage('Initialize') {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/vibhuti2023/terraform-dr.git'
+            }
+        }
+
+        stage('Initialize Terraform') {
+            steps {
+                sh '''
+                terraform init
+                terraform validate
+                '''
+            }
+        }
+
+        stage('Apply Terraform') {
+            steps {
+                sh '''
+                terraform apply -auto-approve
+                INSTANCE_ID=$(terraform output -raw primary_instance_id)
+                echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+                '''
+            }
+        }
+
+        stage('Monitor & Backup') {
             steps {
                 script {
-                    echo 'Initializing DR Setup...'
+                    while (true) {
+                        def status = sh(script: "aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query 'InstanceStatuses[0].InstanceState.Name' --output text", returnStdout: true).trim()
+                        
+                        if (status != "running") {
+                            echo "Instance is down! Creating snapshot and triggering recovery..."
+                            sh '''
+                            SNAPSHOT_ID=$(aws ec2 create-snapshot --volume-id $(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[*].Instances[*].BlockDeviceMappings[*].Ebs.VolumeId' --output text) --description "DR Backup" --query 'SnapshotId' --output text)
+                            aws ec2 deregister-image --image-id $(terraform output -raw backup_ami_id)
+                            NEW_AMI_ID=$(aws ec2 create-image --instance-id $INSTANCE_ID --name "Backup_AMI" --query 'ImageId' --output text)
+                            terraform apply -auto-approve -var "ami_id=$NEW_AMI_ID"
+                            '''
+                        } else {
+                            echo "Instance is healthy. Next check in 15 minutes."
+                        }
+                        sleep 900 // 15 minutes
+                    }
                 }
             }
         }
 
-        stage('Terraform Init & Apply') {
+        stage('Cleanup') {
+            when {
+                expression { return params.CLEANUP }
+            }
             steps {
-                script {
-                    echo 'Initializing and Applying Terraform...'
-                    sh 'terraform init'
-                    sh 'terraform apply -auto-approve'
-                }
+                sh 'terraform destroy -auto-approve'
             }
         }
+    }
 
-        stage('Setup S3 Backup Management') {
-            steps {
-                script {
-                    echo "Applying S3 Lifecycle Policies to auto-delete old backups..."
-                    writeFile file: 's3-lifecycle-policy.json', text: '''{
-                        "Rules": [
-                          {
-                            "ID": "DeleteOldBackups",
-                            "Prefix": "",
-                            "Status": "Enabled",
-                            "Expiration": { "Days": 30 }
-                          }
-                        ]
-                      }'''
-                    sh 'aws s3api put-bucket-lifecycle-configuration --bucket my-dr-backups --lifecycle-configuration file://s3-lifecycle-policy.json'
-                }
-            }
-        }
-
-        stage('Manage EC2 Instances') {
-            steps {
-                script {
-                    echo 'Ensuring DR EC2 instances use Spot Instances & Auto Start/Stop via Lambda...'
-                    sh 'aws lambda invoke --function-name DR_EC2_Control response.json'
-                }
-            }
-        }
-
-        stage('Database DR Setup') {
-            steps {
-                script {
-                    echo 'Automating RDS backup & cross-region replication...'
-                    sh '''
-                    aws rds create-db-snapshot --db-instance-identifier my-primary-db --db-snapshot-identifier my-dr-snapshot
-                    aws rds copy-db-snapshot --source-db-snapshot-identifier my-dr-snapshot --target-db-snapshot-identifier my-dr-snapshot-copy --destination-region us-west-2
-                    '''
-                }
-            }
-        }
-
-        stage('Failover Configuration') {
-            steps {
-                script {
-                    echo 'Setting up Route 53 Health Checks & Failover Routing...'
-                    sh 'aws route53 change-resource-record-sets --hosted-zone-id Z12345 --change-batch file://route53-failover.json'
-                }
-            }
-        }
-
-        stage('Monitoring & Alerts') {
-            steps {
-                script {
-                    echo 'Configuring CloudWatch Alarms & SNS Alerts...'
-                    sh '''
-                    aws cloudwatch put-metric-alarm --alarm-name DR-Failover-Alarm --metric-name CPUUtilization --namespace AWS/EC2 --statistic Average --period 300 --threshold 80 --comparison-operator GreaterThanThreshold --dimensions Name=InstanceId,Value=i-1234567890abcdef0 --evaluation-periods 2 --alarm-actions arn:aws:sns:us-east-1:123456789012:MySNSTopic
-                    '''
-                }
-            }
-        }
+    parameters {
+        booleanParam(name: 'CLEANUP', defaultValue: false, description: 'Destroy all resources')
     }
 }
