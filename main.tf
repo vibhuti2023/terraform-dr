@@ -7,9 +7,19 @@ terraform {
   }
 }
 
-provider "aws" {
-  region = var.region
+terraform {
+  backend "s3" {
+    bucket         = "my-dr-backups"
+    key            = "terraform.tfstate"
+    region         = "ap-southeast-2"  # Change to the correct region
+    encrypt        = true
+  }
 }
+
+provider "aws" {
+  region = "ap-southeast-2"  # Ensure this matches your S3 bucket's region
+}
+
 
 resource "aws_s3_bucket" "dr_backup" {
   bucket = var.s3_bucket_name
