@@ -39,7 +39,7 @@ pipeline {
                 script {
                     echo 'Ensuring DR EC2 instances use Spot Instances & Auto Start/Stop via Lambda...'
                     sh '''
-                    aws lambda invoke --function-name StartStopDRInstances response.json
+                    aws lambda invoke --function-name DR_EC2_Control response.json
                     '''
                 }
             }
