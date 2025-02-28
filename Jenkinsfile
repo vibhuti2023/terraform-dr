@@ -14,33 +14,40 @@ pipeline {
             }
         }
 
-        stage('Setup S3 Backup Management') {
-    steps {
-        script {
-            echo "Applying S3 Lifecycle Policies to auto-delete old backups..."
-            writeFile file: 's3-lifecycle-policy.json', text: '''{
-                "Rules": [
-                  {
-                    "ID": "DeleteOldBackups",
-                    "Prefix": "",
-                    "Status": "Enabled",
-                    "Expiration": { "Days": 30 }
-                  }
-                ]
-              }'''
-            sh 'aws s3api put-bucket-lifecycle-configuration --bucket my-dr-backups --lifecycle-configuration file://s3-lifecycle-policy.json'
+        stage('Terraform Init & Apply') {
+            steps {
+                script {
+                    echo 'Initializing and Applying Terraform...'
+                    sh 'terraform init'
+                    sh 'terraform apply -auto-approve'
+                }
+            }
         }
-    }
-}
 
+        stage('Setup S3 Backup Management') {
+            steps {
+                script {
+                    echo "Applying S3 Lifecycle Policies to auto-delete old backups..."
+                    writeFile file: 's3-lifecycle-policy.json', text: '''{
+                        "Rules": [
+                          {
+                            "ID": "DeleteOldBackups",
+                            "Prefix": "",
+                            "Status": "Enabled",
+                            "Expiration": { "Days": 30 }
+                          }
+                        ]
+                      }'''
+                    sh 'aws s3api put-bucket-lifecycle-configuration --bucket my-dr-backups --lifecycle-configuration file://s3-lifecycle-policy.json'
+                }
+            }
+        }
 
         stage('Manage EC2 Instances') {
             steps {
                 script {
                     echo 'Ensuring DR EC2 instances use Spot Instances & Auto Start/Stop via Lambda...'
-                    sh '''
-                    aws lambda invoke --function-name DR_EC2_Control response.json
-                    '''
+                    sh 'aws lambda invoke --function-name DR_EC2_Control response.json'
                 }
             }
         }
@@ -61,9 +68,7 @@ pipeline {
             steps {
                 script {
                     echo 'Setting up Route 53 Health Checks & Failover Routing...'
-                    sh '''
-                    aws route53 change-resource-record-sets --hosted-zone-id Z12345 --change-batch file://route53-failover.json
-                    '''
+                    sh 'aws route53 change-resource-record-sets --hosted-zone-id Z12345 --change-batch file://route53-failover.json'
                 }
             }
         }
