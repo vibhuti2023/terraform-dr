@@ -7,13 +7,8 @@ terraform {
   }
 }
 
-terraform {
-  backend "s3" {
-    bucket         = "my-dr-backups"
-    key            = "terraform.tfstate"
-    region         = "ap-southeast-2"  # Change to the correct region
-    encrypt        = true
-  }
+provider "aws" {
+  region = var.region
 }
 
 provider "aws" {
