@@ -46,7 +46,7 @@ EOF
 # Lambda Function to Start/Stop DR EC2 Instances
 resource "aws_lambda_function" "start_stop_dr" {
   filename         = "lambda.zip"
-  function_name    = "startStopDRInstances"
+  function_name = "DR_EC2_Control"
   role             = aws_iam_role.lambda_exec.arn
   handler          = "lambda_function.lambda_handler"
   runtime         = "python3.9"
