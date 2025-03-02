@@ -43,16 +43,24 @@ resource "aws_iam_policy_attachment" "s3_access" {
   roles      = [aws_iam_role.ec2_role.name]
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
 }
+# Create an IAM instance profile
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "EC2RecoveryProfile"
+  role = aws_iam_role.ec2_role.name
+}
 
 # Create an EC2 instance
 resource "aws_instance" "primary_instance" {
   ami           = var.ami_id
   instance_type = var.instance_type
   key_name      = var.key_name
-  iam_instance_profile = aws_iam_role.ec2_role.name
+
+  # Use Instance Profile instead of Role Name
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
   tags = {
     Name = "PrimaryEC2"
   }
 }
+
 
