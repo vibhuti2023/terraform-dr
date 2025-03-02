@@ -6,7 +6,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket         = "terraform-dr-backend"  # Replace with your unique bucket name
+    bucket         = "terraform-dr-backend-bucket"  # Replace with your unique bucket name
     key            = "terraform.tfstate"
     region         = "us-east-1"             # Change to your preferred AWS region
     encrypt        = true
