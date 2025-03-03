@@ -8,9 +8,12 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                git branch: 'main', url: 'https://github.com/vibhuti2023/terraform-dr3.git'
+                git branch: 'main', 
+                    credentialsId: '38577a24-edb9-4570-85a6-75dfbde1a695', 
+                    url: 'https://github.com/vibhuti2023/terraform-dr3.git'
             }
         }
+    }
 
         stage('Initialize Terraform') {
             steps {
