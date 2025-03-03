@@ -13,7 +13,6 @@ pipeline {
                     url: 'https://github.com/vibhuti2023/terraform-dr3.git'
             }
         }
-    }
 
         stage('Initialize Terraform') {
             steps {
