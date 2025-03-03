@@ -6,7 +6,7 @@ pipeline {
     }
 
     stages {
-        stage('Clone Repository') {
+        stage('Checkout') {
             steps {
                 git branch: 'main', 
                     credentialsId: '38577a24-edb9-4570-85a6-75dfbde1a695', 
